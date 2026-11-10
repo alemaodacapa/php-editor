@@ -3,15 +3,115 @@ header('Content-Type: text/html; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
-?><!DOCTYPE html>
+
+// Configurações de SEO
+$siteName = 'PHP Studio — Fitowaylabs';
+$siteUrl = 'https://peachpuff-goat-805422.hostingersite.com/';
+$siteTitle = 'PHP Studio | Editor PHP, HTML, CSS, JavaScript e Twig Grátis';
+$siteDescription = 'Editor de código gratuito e em português para PHP, HTML, CSS, JavaScript e Twig. Crie, edite, salve, importe e exporte projetos ZIP. Instale como aplicativo web.';
+$ogImage = $siteUrl . 'assets/meta-og.png';
+
+// Escapar valores para atributos HTML
+function seo_escape(string $value): string {
+    return htmlspecialchars(
+        $value,
+        ENT_QUOTES | ENT_SUBSTITUTE,
+        'UTF-8'
+    );
+}
+
+$structuredData = [
+    '@context' => 'https://schema.org',
+    '@type' => 'WebApplication',
+    'name' => 'PHP Studio',
+    'url' => $siteUrl,
+    'description' => $siteDescription,
+    'applicationCategory' => 'DeveloperApplication',
+    'operatingSystem' => 'Web, Android, iOS, Windows, macOS, Linux',
+    'inLanguage' => 'pt-BR',
+    'isAccessibleForFree' => true,
+    'offers' => [
+        '@type' => 'Offer',
+        'price' => '0',
+        'priceCurrency' => 'BRL'
+    ],
+    'author' => [
+        '@type' => 'Organization',
+        'name' => 'Fitowaylabs',
+        'url' => 'https://fitowaylabs.com.br/'
+    ],
+    'codeRepository' => 'https://github.com/alemaodacapa/php-editor'
+];
+?>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b1020"><meta name="description" content="Fitowaylabs PHP Studio: editor gratuito de PHP, HTML, CSS, JavaScript e Twig, com arquivos locais, visualização e exportação ZIP.">
-<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="assets/icon-192.png" type="image/png"><link rel="apple-touch-icon" href="assets/icon-192.png">
-<title>PHP Studio • Fitowaylabs — Editor de código gratuito</title>
-<link rel="stylesheet" href="assets/style.css?v=1">
+    <!-- Configurações básicas -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+    <title><?= seo_escape($siteTitle) ?></title>
+
+    <!-- SEO -->
+    <meta name="description" content="<?= seo_escape($siteDescription) ?>">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta name="author" content="Fitowaylabs">
+    <meta name="application-name" content="PHP Studio">
+    <meta name="color-scheme" content="dark light">
+
+    <!-- URL canônica -->
+    <link rel="canonical" href="<?= seo_escape($siteUrl) ?>">
+
+    <!-- Open Graph: Facebook, WhatsApp e LinkedIn -->
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="pt_BR">
+    <meta property="og:site_name" content="<?= seo_escape($siteName) ?>">
+    <meta property="og:title" content="<?= seo_escape($siteTitle) ?>">
+    <meta property="og:description" content="<?= seo_escape($siteDescription) ?>">
+    <meta property="og:url" content="<?= seo_escape($siteUrl) ?>">
+
+    <!-- Imagem Open Graph -->
+    <meta property="og:image" content="<?= seo_escape($ogImage) ?>">
+    <meta property="og:image:secure_url" content="<?= seo_escape($ogImage) ?>">
+    <meta property="og:image:type" content="assets/meta-og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="PHP Studio da Fitowaylabs: editor gratuito de PHP, HTML, CSS, JavaScript e Twig.">
+
+    <!-- Twitter / X Cards -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="<?= seo_escape($siteTitle) ?>">
+    <meta name="twitter:description" content="<?= seo_escape($siteDescription) ?>">
+    <meta name="twitter:image" content="<?= seo_escape($ogImage) ?>">
+    <meta name="twitter:image:alt" content="PHP Studio — Editor de código gratuito da Fitowaylabs">
+
+    <!-- PWA e aparência -->
+    <meta name="theme-color" content="#0b1020">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="PHP Studio">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- Manifesto e ícones -->
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="assets/icon-192.png" type="image/png">
+    <link rel="apple-touch-icon" href="assets/icon-192.png">
+
+    <!-- Dados estruturados: Google -->
+    <script type="application/ld+json">
+    <?= json_encode(
+        $structuredData,
+        JSON_UNESCAPED_UNICODE |
+        JSON_UNESCAPED_SLASHES |
+        JSON_HEX_TAG |
+        JSON_HEX_AMP |
+        JSON_HEX_APOS |
+        JSON_HEX_QUOT
+    ) ?>
+    </script>
+
+    <!-- CSS principal -->
+    <link rel="stylesheet" href="assets/style.css?v=2">
 </head>
 <body>
 <div id="app">
