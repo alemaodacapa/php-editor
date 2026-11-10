@@ -40,6 +40,7 @@ A aplicação usa caminhos relativos e **não** exige alterar o domínio no cód
 php-editor/
 ├── index.php                    # Interface e cabeçalhos básicos
 ├── assets/
+├── ├── meta-og.png              # Og Image Graph
 │   ├── app.js                   # Editor, projetos, exportação, PWA
 │   ├── style.css                # Layout responsivo e temas
 │   ├── icon-192.png             # Ícone PWA
