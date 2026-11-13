@@ -9,3 +9,5 @@ AddType application/manifest+json .webmanifest
 <FilesMatch "^(README|CHANGELOG|package-lock|composer\.json)">
  Require all denied
 </FilesMatch>
+
+AddType application/wasm .wasm
