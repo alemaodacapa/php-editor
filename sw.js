@@ -1,5 +1,5 @@
-const VERSION = 'php-studio-runtime-v3';
-const ASSETS = ['./', './assets/style.css?v=2', './assets/app.js?v=3', './assets/preview.js?v=3', './vendor/jszip.min.js?v=1'];
+const VERSION = 'php-studio-runtime-v5';
+const ASSETS = ['./', './assets/style.css?v=5', './assets/app.js?v=5', './assets/preview.js?v=5', './vendor/jszip.min.js?v=1', './assets/storage.js?v=5', './assets/editor.bundle.js?v=5'];
 self.addEventListener('install', event => {
     event.waitUntil(caches.open(VERSION).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
 });

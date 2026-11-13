@@ -5,11 +5,23 @@
     const frame = document.getElementById('previewFrame');
     const hint = document.getElementById('previewHint');
     const runButton = document.getElementById('previewBtn');
-    const channel = crypto.randomUUID();
+    let renderToken = crypto.randomUUID(), generation = 0;
+    let workspaceId = 'legacy';
     let worker, sequence = 0, project = {}, currentPath = '/index.php', busy = false;
     const pending = new Map();
 
     function status(message) { hint.textContent = message; }
+    function log(entry) { document.dispatchEvent(new CustomEvent('studio:log', { detail: { time: Date.now(), file: currentPath.slice(1), ...entry } })); }
+    async function saveDatabase() {
+        if (!worker) return;
+        const database = await rpc('snapshot', {});
+        document.dispatchEvent(new CustomEvent('studio:database', { detail: { id: workspaceId, database } }));
+    }
+    async function prepare(files, settings = {}) {
+        project = { ...files };
+        workspaceId = settings.id || 'legacy';
+        await rpc('project', { files: project, projectId: workspaceId, database: settings.database });
+    }
     function stopRuntime(message) {
         worker?.terminate();
         worker = null;
@@ -21,7 +33,7 @@
     }
     function rpc(type, payload) {
         if (!worker) {
-            worker = new Worker('assets/runtime-worker.js?v=3', { type: 'module' });
+            worker = new Worker('assets/runtime-worker.js?v=5', { type: 'module' });
             worker.onmessage = ({ data }) => {
                 const task = pending.get(data.id);
                 if (!task) return;
@@ -55,7 +67,7 @@
         let serial = 0;
         const callbacks = new Map();
         const nativeFetch = window.fetch.bind(window);
-        const stringify = value => typeof value === 'string' ? value : (() => { try { return JSON.stringify(value); } catch { return String(value); } })();
+        const stringify = value => value instanceof Error ? value.stack || value.message : typeof value === 'string' ? value : (() => { try { return JSON.stringify(value); } catch { return String(value); } })();
         function send(type, payload) { parent.postMessage({ studio: token, type, ...payload }, '*'); }
         function localUrl(value) {
             try {
@@ -63,15 +75,22 @@
                 return url.origin === origin ? url : null;
             } catch { return null; }
         }
-        for (const level of ['log', 'info', 'warn', 'error']) {
+        for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
             const original = console[level].bind(console);
-            console[level] = (...args) => { original(...args); send('console', { level, message: args.map(stringify).join(' ') }); };
+            console[level] = (...args) => { original(...args); send('console', { level, message: args.map(stringify).join(' ').slice(0, 60000), stack: new Error().stack }); };
         }
-        window.addEventListener('error', event => send('console', { level: 'error', message: event.message || 'Erro ao carregar recurso.' }));
-        window.addEventListener('unhandledrejection', event => send('console', { level: 'error', message: String(event.reason) }));
+        window.addEventListener('error', event => send('console', { level: 'error', message: event.message || 'Erro ao carregar recurso.', file: event.filename, line: event.lineno, column: event.colno }));
+        window.addEventListener('unhandledrejection', event => send('console', { level: 'error', message: String(event.reason), stack: event.reason?.stack }));
+        console.clear = () => send('clear', {});
+        console.assert = (condition, ...args) => { if (!condition) console.error('Assertion failed', ...args); };
         document.addEventListener('click', event => {
             const link = event.target.closest('a[href]');
-            if (!link || link.hasAttribute('download') || link.target === '_blank' || link.getAttribute('href').startsWith('#')) return;
+            if (!link || link.hasAttribute('download') || link.target === '_blank') return;
+            if (link.getAttribute('href').startsWith('#')) {
+                event.preventDefault();
+                document.getElementById(decodeURIComponent(link.hash.slice(1)))?.scrollIntoView();
+                return;
+            }
             const url = localUrl(link.getAttribute('href'));
             if (url) { event.preventDefault(); send('navigate', { request: { url: url.href } }); }
         });
@@ -116,6 +135,7 @@
     }
 
     function render(text, path) {
+        renderToken = crypto.randomUUID();
         const cache = new Map();
         function rewriteModule(source, base) {
             return source.replace(/(\b(?:import|export)\s+(?:[^;'"\n]*?\s+from\s*)?['"])([^'"]+)(['"])/g, (match, start, target, end) => {
@@ -139,7 +159,7 @@
                 content = content.replace(/url\(\s*(['"]?)([^)'"\s]+)\1\s*\)/gi, (match, quote, target) => `url("${resource(target, url.pathname, next)}")`)
                     .replace(/(@import\s+)(['"])([^'"]+)\2/gi, (match, start, quote, target) => start + '"' + resource(target, url.pathname, next) + '"');
             }
-            if (/\.m?js$/.test(name)) content = rewriteModule(content, url.pathname);
+            if (/\.m?js$/.test(name)) content = rewriteModule(content, url.pathname) + '\n//# sourceURL=studio:///' + name;
             const value = blob(content, mime(name));
             cache.set(name, value);
             return value + url.hash;
@@ -167,8 +187,12 @@
             else node.setAttribute('style', replace(node.getAttribute('style')));
         }
         for (const script of doc.querySelectorAll('script[type="module"]:not([src])')) script.textContent = rewriteModule(script.textContent, path);
+        for (const script of doc.querySelectorAll('script:not([src]):not([type="importmap"])')) {
+            const originalLine = Math.max(0, text.slice(0, text.indexOf(script.textContent)).split('\n').length - 1);
+            script.textContent = '\n'.repeat(originalLine) + script.textContent + '\n//# sourceURL=studio:///' + path.replace(/^\//, '') + '\n';
+        }
         const bridge = doc.createElement('script');
-        bridge.textContent = `(${previewBridge.toString()})(${JSON.stringify(channel)}, ${JSON.stringify(virtualOrigin)}, ${JSON.stringify(path)});`;
+        bridge.textContent = `(${previewBridge.toString()})(${JSON.stringify(renderToken)}, ${JSON.stringify(virtualOrigin)}, ${JSON.stringify(path)});`;
         importMap.after(bridge);
         frame.removeAttribute('src');
         frame.srcdoc = '<!doctype html>\n' + doc.documentElement.outerHTML;
@@ -191,31 +215,72 @@
         return { ...result, headers, path: url.pathname + url.search };
     }
     async function navigate(input) {
+        const started = generation;
         try {
             status('Executando o projeto…');
             const result = await request(input);
+            if (started !== generation) return;
             currentPath = result.path;
             render(result.text, currentPath);
+            const plain = new DOMParser().parseFromString(result.text, 'text/html').body.textContent;
+            for (const error of plain.matchAll(/((?:Warning|Fatal error|Parse error|Notice):[^\n]+?) in \/project\/([^\n]+?) on line (\d+)/g)) {
+                log({ level: /Notice|Warning/.test(error[1]) ? 'warn' : 'error', message: error[1], file: error[2], line: Number(error[3]) });
+            }
+            await saveDatabase();
             status(result.errors ? 'PHP — ' + result.errors : `Executado · ${currentPath} · HTTP ${result.status}`);
         } catch (error) {
+            if (started !== generation) return;
             status(error.message);
+            log({ level: 'error', message: error.message });
             const safe = document.createElement('pre');
             safe.textContent = error.message;
             frame.srcdoc = safe.outerHTML;
         }
     }
     window.addEventListener('message', async ({ source, data }) => {
-        if (source !== frame.contentWindow || data?.studio !== channel) return;
-        if (data.type === 'console') status(`${data.level === 'error' ? 'Erro JavaScript' : 'Console'} — ${data.message}`);
+        if (source !== frame.contentWindow || data?.studio !== renderToken) return;
+        if (data.type === 'clear') document.dispatchEvent(new Event('studio:clear-console'));
+        if (data.type === 'console') {
+            const location = (data.stack || '').match(/studio:\/\/\/([^):\n]+):(\d+):(\d+)/);
+            log({ level: data.level, message: data.message, file: location?.[1] || data.file?.replace('studio:///', '') || currentPath.slice(1), line: Number(location?.[2] || data.line || 1), column: Number(location?.[3] || data.column || 1) });
+            status(`${data.level === 'error' ? 'Erro JavaScript' : 'Console'} — ${data.message}`);
+        }
         if (data.type === 'navigate') await navigate(data.request);
         if (data.type === 'fetch') {
-            try { frame.contentWindow.postMessage({ studio: channel, type: 'response', id: data.id, result: await request(data.request) }, '*'); }
-            catch (error) { frame.contentWindow.postMessage({ studio: channel, type: 'response', id: data.id, error: error.message }, '*'); }
+            try {
+                const start = performance.now();
+                const result = await request(data.request);
+                log({ level: 'network', message: `${data.request.method || 'GET'} ${new URL(data.request.url).pathname} · HTTP ${result.status} · ${Math.round(performance.now() - start)} ms` });
+                frame.contentWindow.postMessage({ studio: data.studio, type: 'response', id: data.id, result }, '*');
+                await saveDatabase();
+            }
+            catch (error) { frame.contentWindow.postMessage({ studio: data.studio, type: 'response', id: data.id, error: error.message }, '*'); }
         }
     });
 
     window.PHPStudioPreview = {
-        async run(files, active) {
+        reset() {
+            generation++; renderToken = crypto.randomUUID(); project = {}; currentPath = '/index.php';
+            stopRuntime('Projeto alterado.'); frame.srcdoc = ''; status('Execute o projeto aberto para atualizar a prévia.');
+        },
+        cancel() { stopRuntime('Execução cancelada.'); },
+        async analyzeTwig(files, name, settings) {
+            await prepare(files, settings);
+            return rpc('lintTwig', { name });
+        },
+        async api(files, input, settings) {
+            await prepare(files, settings);
+            const result = await request(input);
+            await saveDatabase();
+            return result;
+        },
+        async database(files, sql, mode, settings) {
+            await prepare(files, settings);
+            const result = await rpc('database', { sql, mode });
+            await saveDatabase();
+            return result;
+        },
+        async run(files, active, settings = {}) {
             if (busy) return;
             busy = true;
             runButton.disabled = true;
@@ -232,7 +297,7 @@
                 }
                 if (Object.keys(project).some(name => /\.(php|twig)$/.test(name))) {
                     status('Carregando PHP 8.3 e Twig… O primeiro carregamento pode demorar.');
-                    await rpc('project', { files: project });
+                    await prepare(project, settings);
                 }
                 await navigate({ url: '/' + entry });
             } catch (error) { status(error.message); }

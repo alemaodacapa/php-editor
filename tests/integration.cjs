@@ -1,0 +1,83 @@
+const {chromium}=require('playwright');
+const fs=require('fs'),path=require('path'),http=require('http');
+const root=path.resolve(__dirname,'..');
+fs.mkdirSync(path.join(root,'test-results'),{recursive:true});
+const server=http.createServer((req,res)=>{
+ const file=path.join(root,new URL(req.url,'http://localhost').pathname==='/'?'index.php':decodeURIComponent(new URL(req.url,'http://localhost').pathname));
+ if(!file.startsWith(root)||!fs.existsSync(file)||fs.statSync(file).isDirectory()){res.writeHead(404);res.end('missing');return;}
+ let bytes=fs.readFileSync(file);
+ const type={'.js':'text/javascript','.wasm':'application/wasm','.json':'application/json','.css':'text/css','.php':'text/html','.png':'image/png'}[path.extname(file)]||'text/plain';
+ if(file.endsWith('.php'))bytes=Buffer.from(bytes.toString().replace(/<\?php[\s\S]*?\?>/g,'').replace(/<\?=[\s\S]*?\?>/g,''));
+ res.setHeader('Content-Type',type);res.end(bytes);
+});
+(async()=>{
+ await new Promise(resolve=>server.listen(8853,'127.0.0.1',resolve));
+ const browser=await chromium.launch({channel:process.env.STUDIO_BROWSER||undefined,headless:true});
+ const page=await browser.newPage({viewport:{width:1440,height:1100}});
+ page.on('pageerror',error=>console.log('PAGE ERROR',error.message));
+ page.on('console',message=>{if(message.type()==='error')console.log('CONSOLE ERROR',message.text().slice(0,300));});
+ await page.goto(process.env.STUDIO_URL||'http://127.0.0.1:8853/');
+ await page.waitForFunction(()=>window.PHPStudio,{timeout:30000});
+ console.log('CodeMirror initialized'); const firstProject = await page.evaluate(()=>PHPStudio.project.id);
+ await page.evaluate(()=>PHPStudio.editor.replace('<?php echo "Upgrade ".(6*7);'));
+ await page.locator('#previewBtn').click();await page.frames()[1].getByText('Upgrade 42',{exact:true}).waitFor({timeout:90000});
+ console.log('PHP RUN passed');
+ await page.locator('#sqlEditor').fill("CREATE TABLE notes(id INTEGER PRIMARY KEY, title TEXT); INSERT INTO notes(title) VALUES('Persisted');");
+ await page.locator('#sqlScriptBtn').click();await page.waitForFunction(()=>!document.getElementById('sqlScriptBtn').disabled);
+ console.log('SQL script',await page.locator('#sqlStatus').innerText());
+ await page.locator('#sqlEditor').fill('SELECT * FROM notes');await page.locator('#sqlRunBtn').click();await page.waitForFunction(()=>!document.getElementById('sqlRunBtn').disabled);
+ console.log('SQL results',await page.locator('#sqlResults').innerText(),await page.locator('#sqlStatus').innerText());
+ await page.evaluate(()=>PHPStudio.editor.replace('<?php $db = studio_db(); echo $db->query("SELECT title FROM notes")->fetchColumn();'));
+ await page.locator('#previewBtn').click();await page.frames()[1].getByText('Persisted',{exact:true}).waitFor();
+ console.log('PHP database passed');
+ await page.evaluate(()=>PHPStudio.addFile('api.php','<?php header("Content-Type: application/json"); echo json_encode(["value"=>$_POST["value"]??$_GET["value"]??"ok"]);'));
+ await page.locator('#apiUrl').fill('/api.php?value=api-real');await page.locator('#apiSendBtn').click();await page.waitForFunction(()=>!document.getElementById('apiSendBtn').disabled);
+ console.log('API',await page.locator('#apiStatus').innerText(),await page.locator('#apiResponse').innerText());
+ await page.evaluate(()=>{PHPStudio.choose('index.php');PHPStudio.editor.replace('<?php echo ;');});
+ await page.locator('#analyzeBtn').click();await page.waitForTimeout(1600);
+ console.log('Diagnostics',await page.locator('#diagnosticsList').innerText()); if(!(await page.locator('#diagnosticsList').innerText()).includes('Parse Error'))throw Error('PHP diagnostics missing');
+ await page.evaluate(()=>PHPStudio.editor.replace('<?php $number=42;echo $number;'));
+ await page.locator('#formatBtn').click();await page.waitForTimeout(1500);console.log('Formatted PHP',await page.evaluate(()=>PHPStudio.editor.value()));
+
+ await page.evaluate(()=>PHPStudio.persist());
+ await page.reload();await page.waitForFunction(()=>window.PHPStudio);
+ await page.locator('#sqlEditor').fill('SELECT title FROM notes');await page.locator('#sqlRunBtn').click();await page.waitForFunction(()=>!document.getElementById('sqlRunBtn').disabled);if(!(await page.locator('#sqlResults').innerText()).includes('Persisted'))throw Error('Database did not survive reload');
+ console.log('SQLite reload persistence passed');
+ await page.locator('#newProjectBtn').click();await page.locator('#modalBody input').fill('Isolated project');await page.getByRole('button',{name:'Confirmar',exact:true}).click();await page.waitForFunction(old=>PHPStudio.project.id!==old,firstProject);
+ await page.locator('#sqlEditor').fill('SELECT * FROM notes');await page.locator('#sqlRunBtn').click();await page.waitForFunction(()=>!document.getElementById('sqlRunBtn').disabled);if(!(await page.locator('#sqlStatus').innerText()).includes('no such table'))throw Error('Database leaked between projects');
+ await page.locator('#projectSelect').selectOption(firstProject);await page.waitForFunction(id=>PHPStudio.project.id===id,firstProject);
+ await page.locator('#sqlRunBtn').click();await page.waitForFunction(()=>!document.getElementById('sqlRunBtn').disabled);if(!(await page.locator('#sqlResults').innerText()).includes('Persisted'))throw Error('Original database lost');
+ console.log('Project isolation and switching passed');
+ await page.evaluate(()=>{PHPStudio.addFile('index.html','<script src="scripts/app.js"></script>');PHPStudio.addFile('scripts/app.js','console.log("first log");\nconsole.warn("a warning");\nthrow new Error("diagnostic boom");');PHPStudio.choose('index.html');});
+ await page.locator('#previewBtn').click();await page.locator('#consoleEntries').getByText(/diagnostic boom/).first().waitFor();
+ const errorRow=page.locator('.console-row.error').filter({hasText:'diagnostic boom'});await errorRow.locator('button').click();if(await page.evaluate(()=>PHPStudio.active)!=='scripts/app.js')throw Error('Console source navigation failed');
+ if(await page.evaluate(()=>{const state=PHPStudio.editor.view.state;return state.doc.lineAt(state.selection.main.head).number;})!==3)throw Error('Console line number incorrect');
+ await page.locator('#consoleLevel').selectOption('error');if(await page.locator('.console-row.warn').count())throw Error('Console filter failed');await page.locator('#consoleLevel').selectOption('all');
+ console.log('Console history, source line and filters passed');
+ await page.evaluate(()=>PHPStudio.editor.replace('const = ;'));await page.locator('#analyzeBtn').click();await page.waitForTimeout(1100);if(!(await page.locator('#diagnosticsList').innerText()).includes('Parsing error'))throw Error('JavaScript diagnostic failed');
+ await page.evaluate(()=>PHPStudio.addFile('check.twig','{% if value %}<h1>{{ value }}</h1>'));await page.locator('#analyzeBtn').click();await page.waitForFunction(()=>!document.getElementById('analyzeBtn').disabled);console.log('Twig diagnostics',await page.locator('#diagnosticsList').innerText());if(!(await page.locator('#diagnosticsList').innerText()).match(/unclosed|unexpected end/i))throw Error('Twig validation failed');
+ console.log('JavaScript and Twig diagnostics passed');
+ await page.evaluate(()=>{PHPStudio.choose('api.php');PHPStudio.editor.replace('<?php $data = json_decode(file_get_contents("php://input"), true) ?: []; header("Content-Type: application/json"); echo json_encode(["value" => $data["value"] ?? $_GET["value"] ?? "ok", "auth" => isset($_SERVER["HTTP_AUTHORIZATION"])]);');});
+ await page.locator('#apiTarget').selectOption('project');await page.locator('#apiMethod').selectOption('POST');await page.locator('#apiUrl').fill('/api.php?token=history-secret-123');await page.locator('#apiHeaders').fill('{"Content-Type":"application/json","X-API-Key":"header-secret-123"}');await page.locator('#apiToken').fill('bearer-secret-123');await page.locator('#apiBody').fill('{"value":"json-post","secret":"body-secret-123"}');await page.locator('#apiSendBtn').click();await page.waitForFunction(()=>!document.getElementById('apiSendBtn').disabled);
+ const apiJSON=JSON.parse(await page.locator('#apiResponse').innerText());if(apiJSON.value!=='json-post'||!apiJSON.auth)throw Error('API POST or auth failed');
+ await page.locator('#apiSaveBtn').click();await page.locator('#modalBody input').fill('My API');await page.getByRole('button',{name:'Confirmar',exact:true}).click();await page.waitForTimeout(300);
+ const saved=await page.evaluate(async()=>JSON.stringify([await StudioStorage.get('apiHistory'),await StudioStorage.get('apiCollections')]));if(/history-secret|header-secret|bearer-secret|body-secret/.test(saved))throw Error('Request credentials persisted');
+ console.log('API JSON POST, Bearer auth, collections and credential redaction passed');
+ if(process.env.STUDIO_URL){
+  await page.evaluate(()=>{PHPStudio.addFile('composer.json',JSON.stringify({require:{'psr/log':'^3.0'},autoload:{'psr-4':{'App\\':'src/'}},scripts:{'post-update-cmd':'@php -r "throw new Exception(\"scripts-executed\");"'}}));PHPStudio.addFile('src/Greeting.php','<?php namespace App; class Greeting { public static function text(): string { return "Composer real"; } }');});
+  await page.locator('#composerInstallBtn').click();await page.waitForFunction(()=>!document.getElementById('composerInstallBtn').disabled,null,{timeout:115000});
+  console.log('Composer',await page.locator('#composerStatus').innerText());if(!await page.evaluate(()=>Object.hasOwn(PHPStudio.files,'vendor/autoload.php')))throw Error('Composer install failed');
+  await page.evaluate(()=>{PHPStudio.choose('index.php');PHPStudio.editor.replace('<?php echo App\\Greeting::text()." ".Psr\\Log\\LogLevel::INFO;');});await page.locator('#previewBtn').click();await page.frames()[1].getByText('Composer real info',{exact:true}).waitFor();
+  const blocked=await page.request.post(new URL('api/composer.php',page.url()).href,{data:{require:{'psr/log':'^3.0'}}});if(blocked.status()!==403)throw Error('Composer CSRF protection failed');
+  console.log('Real Composer dependencies, PSR-4 autoload, scripts disabled and CSRF passed');
+  await page.evaluate(()=>{PHPStudio.choose('composer.json');PHPStudio.editor.replace(JSON.stringify({require:{'psr/log':'^3.0'}}));});
+  await page.locator('#composerInstallBtn').click();await page.waitForFunction(()=>!document.getElementById('composerInstallBtn').disabled,null,{timeout:115000});
+  if(!(await page.locator('#composerStatus').innerText()).includes('instalado'))throw Error('Composer require-only manifest failed');
+  console.log('Composer require-only manifest passed');
+ }
+ await page.screenshot({path:path.join(root,'test-results/upgrades-desktop.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Mobile horizontal overflow');await page.screenshot({path:path.join(root,'test-results/upgrades-mobile.png'),fullPage:true});
+ console.log('ALL UPGRADE CHECKS PASSED');
+
+ await browser.close();server.close();
+})().catch(error=>{console.error(error);process.exit(1)});

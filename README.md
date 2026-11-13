@@ -1,86 +1,83 @@
-# PHP Studio — Editor de Código | Fitowaylabs
+# PHP Studio — Fitowaylabs
 
-Editor gratuito e responsivo de **PHP, HTML, CSS, JavaScript e Twig**, em português do Brasil. Interface escura inspirada em um ambiente moderno de desenvolvimento, com opção de tema claro. Projeto independente de domínio, adequado para hospedagem compartilhada **Hostinger** e distribuição pública no GitHub.
+Editor online em português para PHP, HTML, CSS, JavaScript, JSON e Twig. A interface mantém os temas escuro e claro, com execução PHP em WebAssembly dentro do navegador.
 
-**Editor online:** https://peachpuff-goat-805422.hostingersite.com/  
-**Repositório:** https://github.com/alemaodacapa/php-editor  
-**Desenvolvido por:** [Fitowaylabs](https://fitowaylabs.com.br) · © 2026.
+[Editor online](https://peachpuff-goat-805422.hostingersite.com/) · [Fitowaylabs](https://fitowaylabs.com.br)
 
-## Funcionalidades
+## Editor e análise
 
-- Criar e editar arquivos `.php`, `.html`, `.htm`, `.css`, `.js`, `.mjs`, `.twig` e texto; abas, explorador e numeração de linhas.
-- Salvar o projeto automaticamente no `localStorage` do dispositivo, com botão **Salvar** e atalho `Ctrl/Cmd + S`.
-- Importar arquivos de texto ou projetos em `.zip`; exportar o projeto inteiro como `.zip`; baixar o arquivo ativo.
-- Copiar todo o código pelo botão discreto no canto inferior do editor (temporariamente oculto durante a rolagem).
-- Executar PHP 8.3.36 em WebAssembly e visualizar HTML, CSS e JavaScript em um iframe isolado. O botão **Run** e o atalho `Ctrl/Cmd + Enter` executam o projeto.
-- Resolver arquivos locais de CSS e JavaScript, módulos ES, navegação interna, formulários GET/POST e chamadas `fetch` para arquivos PHP do projeto.
-- Mostrar erros de PHP e mensagens de console JavaScript na prévia. Execuções PHP que excedem o prazo são interrompidas e podem ser reiniciadas.
-- Iniciar projetos com `index.php` vazio, com preservação dos projetos já salvos.
-- Executar templates Twig com herança, includes, filtros e laços. Variáveis podem ser fornecidas em `context.json` na pasta do template. A conversão assistida de padrões simples de PHP permanece disponível.
-- Interface adaptável a computadores e celulares; tema escuro/claro; suporte PWA/uso offline após instalação e carregamento inicial.
-- Botões Android e Apple com fluxo de instalação de aplicativo web ou instruções para adicionar à tela inicial.
+O editor CodeMirror oferece destaque de sintaxe, autocompletar, indentação, histórico de desfazer por arquivo, dobramento de blocos, busca e substituição. O botão Formatar usa Prettier para PHP, HTML, CSS, JavaScript e JSON.
 
-## Requisitos
+JavaScript é analisado com ESLint, PHP com php-parser e JSON com seu parser nativo. HTML e CSS usam os parsers do CodeMirror. Os diagnósticos mostram arquivo, linha e coluna e permitem navegar até o trecho. O botão Analisar valida Twig com o parser PHP do próprio Twig. A verificação de sintaxe ajuda a localizar problemas antes de executar. Erros de lógica e dependências de ambiente precisam de testes de execução.
 
-- Servidor HTTPS (recomendado/necessário para instalar PWA), **PHP 8.2 ou posterior** e hospedagem estática comum.
-- Navegador recente com JavaScript, WebAssembly, Web Workers e armazenamento local habilitados. O primeiro Run de PHP/Twig baixa aproximadamente 20 MB de interpretador e dependências.
-- **Sem banco de dados, chaves de API, login, npm, composer ou build obrigatório.** JSZip 3.10.1 incluído localmente em `vendor/`.
+Cada projeto pode ter vários arquivos e um banco SQLite próprio. Os projetos ficam em IndexedDB neste navegador, com salvamento automático. Projetos da versão anterior são migrados do localStorage. O projeto demonstrativo antigo é descartado somente quando seus quatro arquivos continuam integralmente sem alterações.
 
-## Instalação na Hostinger
+## Execução e console
 
-1. Baixe o ZIP do projeto e extraia o conteúdo.
-2. Abra **hPanel → Sites → Gerenciar → Gerenciador de Arquivos** do domínio desejado.
-3. Envie todos os arquivos e pastas **de dentro da pasta do projeto** à pasta `public_html` (não envie apenas o ZIP sem extrair).
-4. Confirme que `public_html/index.php`, `public_html/assets/`, `public_html/vendor/`, `public_html/sw.js` e `public_html/manifest.webmanifest` existem.
-5. Ative SSL/HTTPS para o domínio e acesse `https://peachpuff-goat-805422.hostingersite.com/` ou seu domínio definitivo.
-6. Teste criar arquivo, salvar, atualizar a página, importar e exportar ZIP, executar PHP/Twig e instalar como PWA.
-7. Confirme que `vendor/php-wasm/8_3_36/php_8_3.wasm` é servido com o tipo `application/wasm`. A configuração está no `.htaccess`.
+Selecione a página PHP, HTML ou Twig e clique em Run. Quando o arquivo ativo for CSS ou JavaScript, o editor procura uma página de entrada no projeto. JavaScript também pode ser executado individualmente.
 
-Os arquivos do editor usam caminhos relativos. Ao publicar em outro domínio, ajuste `$siteUrl` e os metadados de SEO em `index.php`. Mantenha a estrutura na raiz do repositório.
+PHP 8.3.36 e Twig executam em um Web Worker com sistema de arquivos virtual. A prévia usa iframe de origem isolada. Referências a estilos, scripts, módulos JavaScript e SVG locais são resolvidas a partir dos arquivos do projeto. Navegação interna, formulários GET/POST e fetch para arquivos PHP são encaminhados ao interpretador.
 
-## Estrutura
+O console mantém até 500 mensagens por sessão, com filtros por nível e texto, cópia, limpeza e links para arquivo e linha. Logs não são gravados no histórico dos projetos.
 
-```text
-php-editor/
-├── index.php                    # Interface e cabeçalhos básicos
-├── assets/
-├── ├── meta-og.png              # Og Image Graph
-│   ├── preview.js               # Prévia isolada, recursos e ponte de requisições
-│   ├── runtime-worker.js        # Interpretador PHP compilado para o navegador
-│   ├── app.js                   # Editor, projetos, exportação, PWA
-│   ├── style.css                # Layout responsivo e temas
-│   ├── icon-192.png             # Ícone PWA
-│   └── icon-512.png             # Ícone PWA
-├── vendor/                     # JSZip, PHP WebAssembly, Twig e licenças
-├── docs/execucao.md             # Execução e reconstrução do runtime
-├── manifest.webmanifest        # Metadados de instalação
-├── sw.js                       # Cache offline / Service Worker
-├── .htaccess                   # Ajustes Apache
-├── .gitignore                  # Exclusões do versionamento
-├── LICENSE                     # Licença MIT
-└── README.md                   # Manual e especificação
-```
+O primeiro carregamento do PHP/Twig transfere aproximadamente 20 MB. Código PHP que excede o prazo do worker é interrompido. O ambiente pode ser iniciado novamente no próximo Run.
 
-## Segurança e limitações
+## Testador de APIs
 
-PHP e Twig são interpretados em um sistema de arquivos virtual dentro de um Web Worker no navegador. A prévia fica em um iframe com origem isolada. Os códigos dos projetos ficam no armazenamento local e no ambiente de execução do navegador.
+Escolha Projeto aberto para chamar arquivos do sistema virtual ou API externa para enviar uma requisição HTTP pelo navegador. Estão disponíveis GET, POST, PUT, PATCH, DELETE, HEAD e OPTIONS, headers em JSON, corpo e Bearer token.
 
-Projetos que dependem de MySQL externo, extensões PHP adicionais, processos do sistema ou regras Apache precisam de um ambiente de servidor compatível. A importação atual aceita arquivos de texto. Imagens e fontes externas podem ser usadas por URL. O console mostra a mensagem mais recente. A conversão assistida de PHP para Twig cobre padrões simples e exige revisão.
+A resposta mostra status HTTP, duração, tamanho, headers disponíveis e conteúdo com formatação JSON. APIs externas precisam permitir CORS. O navegador controla quais headers de resposta ficam disponíveis para leitura. O cliente externo tem prazo de 30 segundos e limite de resposta de 5 MB.
 
-O código fonte do worker, o funcionamento do interpretador, as dependências e as instruções de reconstrução estão em [docs/execucao.md](docs/execucao.md).
+Histórico e coleções guardam metadados da requisição. O campo Bearer, o corpo e os headers de autenticação reconhecidos são excluídos do armazenamento. Parâmetros de URL com nomes associados a credenciais são redigidos. Os dados completos da resposta permanecem somente na interface da sessão.
 
-O aplicativo web pode ser instalado **como PWA**, mas **não gera, baixa ou instala automaticamente APK/IPA**. Android pode mostrar um prompt de instalação do navegador, e iOS geralmente exige **Compartilhar → Adicionar à Tela de Início** no Safari. Para APK assinado, é necessário empacotamento externo (por exemplo, Trusted Web Activity/Capacitor); para IPA, assinatura Apple e fluxo próprio de distribuição.
+## Composer
 
-O armazenamento em `localStorage` tem limites e pode ser apagado pelo usuário/navegador; exporte ZIP para backup. Limites desta versão: arquivos de texto individuais até 2 MB na importação, ZIP importado com até 250 arquivos aceitos, sem sincronização de nuvem ou integração com GitHub.
+Crie composer.json na raiz com as dependências em require e clique em Instalar dependências. O servidor executa o Composer real para resolver versões e obter pacotes públicos do Packagist. O cliente recebe vendor e composer.lock e passa a usá-los no interpretador isolado.
+
+O instalador usa um manifesto gerado a partir dos requisitos e caminhos de autoload aceitos. Scripts, plugins, repositórios personalizados e dependências de desenvolvimento ficam desativados neste serviço. Os arquivos PHP do projeto ficam no navegador. As dependências instaladas substituem a pasta vendor do projeto atual.
+
+O servidor precisa de PHP 8.2 ou posterior, curl, ZIP e um Composer PHAR. Na Hostinger, o caminho padrão é /usr/local/bin/composer2.phar. Em outra hospedagem, configure a variável de ambiente PHP_STUDIO_COMPOSER_PATH com o caminho absoluto do PHAR. Instale uma versão atualizada do Composer no servidor.
+
+A rota usa sessão e token CSRF, limite de oito instalações por IP em cinco minutos e uma instalação simultânea por cópia do editor. O limite do resultado é 25 MB e 2.500 arquivos. Diretórios temporários da instalação são removidos ao final. O cache contém os pacotes públicos baixados pelo Composer.
+
+## SQLite
+
+O painel Ambiente permite executar consultas, rodar scripts em transação, importar SQL, importar um arquivo SQLite e exportar o banco. Consultas mostram até 500 linhas por vez. O banco fica salvo com seu projeto no IndexedDB e acompanha a exportação ZIP como studio-database.sqlite.
+
+Para usar o banco em PHP, obtenha uma conexão com studio_db(). Também é possível criar PDO usando o caminho exposto em STUDIO_DB_PATH. A documentação de execução contém os detalhes.
+
+O banco usa o dialeto SQLite. Aplicações que exigem MySQL, processos do sistema, regras Apache ou extensões PHP adicionais precisam de um ambiente de servidor compatível. O instalador de dependências não disponibiliza esses recursos ao interpretador WebAssembly.
+
+## Instalação
+
+1. Baixe o repositório e envie seu conteúdo para public_html, com assets, vendor, api, index.php e sw.js.
+2. Ative HTTPS e use PHP 8.2 ou posterior para servir a interface e a rota do Composer.
+3. Ajuste siteUrl e os metadados de SEO em index.php para o domínio escolhido.
+4. Confira que o binário vendor/php-wasm/8_3_36/php_8_3.wasm é servido como application/wasm. A configuração está no .htaccess.
+5. Confira o caminho do Composer e as extensões PHP curl e ZIP se for usar a instalação de dependências.
+6. Teste um projeto, a exportação ZIP, a persistência do banco e uma chamada no testador de APIs.
+
+Os arquivos de execução já estão compilados. Node e npm são usados para desenvolver e reconstruir os bundles.
+
+## Desenvolvimento
+
+Use Node 24.18 ou posterior. Execute npm install e npm run build. As versões diretas das ferramentas estão fixadas em package.json. Os fontes do editor e dos workers estão em docs. O build também copia o formatador PHP do pacote oficial para vendor/php-formatter.js.
+
+A suíte de integração está em tests/integration.cjs. Para executá-la, instale as dependências, instale o Chromium com npx playwright install chromium e rode npm test. Ela cria um servidor de testes local e usa um perfil de navegador separado.
+
+Para incluir a rota PHP real do Composer, defina STUDIO_URL apontando para uma cópia de homologação do editor e rode npm test. STUDIO_BROWSER pode selecionar um navegador instalado, como chrome. A suíte cria projetos no armazenamento do perfil de testes e instala o pacote público psr/log. Os resultados visuais ficam em test-results.
 
 ## Atalhos
 
 | Ação | Teclas |
 | --- | --- |
-| Salvar | `Ctrl/Cmd + S` |
-| Executar projeto | `Ctrl/Cmd + Enter` |
-| Indentar | `Tab` |
+| Salvar projeto | Ctrl/Cmd + S |
+| Executar | Ctrl/Cmd + Enter |
+| Buscar e substituir | Ctrl/Cmd + F |
+| Autocompletar | Ctrl + Espaço |
+| Formatar | Ctrl/Cmd + Shift + F |
+| Indentar | Tab |
 
-## Licença e créditos
+## Licenças
 
-O código próprio do editor segue a licença [MIT](LICENSE). PHP.wasm/WordPress Playground segue GPL-2.0-or-later. Twig e os componentes Symfony seguem MIT. JSZip tem licença MIT/GPLv3, conforme os termos da biblioteca. Consulte os arquivos de [licenças das dependências](vendor/licenses). Copyright © 2026 — Criado por [Fitowaylabs](https://fitowaylabs.com.br). Todos os direitos reservados sobre a marca, observada a licença deste código.
+O código próprio segue a licença MIT do arquivo LICENSE. PHP.wasm/WordPress Playground segue GPL-2.0-or-later. As dependências do editor, do formatador, do analisador e do Twig têm seus termos em vendor/licenses. As marcas pertencem aos respectivos titulares.

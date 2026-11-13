@@ -1,23 +1,51 @@
-# Execução do PHP Studio
+# Ambiente de execução do PHP Studio
 
-O botão Run interpreta PHP 8.3.36 com WebAssembly em um Web Worker. O Twig 3 e suas dependências são carregados no sistema de arquivos virtual do PHP. HTML, CSS e JavaScript são executados no iframe isolado da prévia. Os arquivos reais da hospedagem não são acessíveis pelo código do projeto.
+## Interpretador
 
-Selecione um arquivo .php, .html ou .twig e clique em Run ou pressione Ctrl+Enter. Quando selecionar CSS ou JavaScript, o editor procura uma página de entrada no projeto. Arquivos JavaScript também podem ser executados individualmente, com saída na faixa de console da prévia.
+PHP 8.3.36 é carregado de vendor/php-wasm em um Web Worker dedicado. O worker disponibiliza os arquivos do projeto em /project. A biblioteca Twig integrada fica em /studio-vendor. Quando o projeto tem vendor/autoload.php próprio, esse autoloader também é carregado.
 
-Referências a estilos, scripts, módulos JavaScript e SVG locais são resolvidas a partir da pasta da página. Links internos, formulários GET/POST e fetch para arquivos do projeto utilizam o mesmo ambiente PHP. Projetos dependentes de MySQL externo, extensões PHP específicas, processos do sistema ou regras Apache exigem um servidor adequado a essas dependências. A prévia usa arquivos virtuais de texto. Imagens e fontes externas podem ser referenciadas por URL.
+A prévia executa HTML, CSS e JavaScript em um iframe com origem isolada. Recursos locais são transformados em URLs de dados e módulos recebem um mapa de imports. A ponte entre a prévia e o editor encaminha navegação, formulários e fetch dos arquivos virtuais. Cada renderização recebe uma identificação própria. Trocar de projeto invalida a ponte anterior e encerra o worker.
 
-Para executar um template Twig diretamente, crie context.json na pasta do template com um objeto JSON contendo as variáveis. Os templates podem usar extends, include, filtros e laços. Arquivos PHP podem usar as classes Twig após o carregamento automático. Projetos criados começam com index.php vazio. Projetos existentes permanecem no armazenamento local. O projeto demonstrativo antigo é removido apenas se seus quatro arquivos estiverem integralmente sem alterações.
+## Banco por projeto
 
-O primeiro Run de PHP/Twig baixa aproximadamente 20 MB. O cache permite reutilizar o interpretador. Cada execução PHP tem limites de memória e tempo. Um worker que excede o prazo é encerrado e pode ser iniciado novamente no próximo Run.
+O caminho do banco virtual é /studio-data/project.sqlite. A função studio_db() cria uma conexão PDO configurada para lançar exceções. O caminho também está disponível em getenv('STUDIO_DB_PATH'). A base fica fora da pasta /project e é preservada durante novas execuções do mesmo projeto.
 
-## Dependências e reconstrução
+O exemplo abaixo é uma instrução de conexão para o usuário inserir quando precisar do banco.
 
-PHP.wasm / WordPress Playground 3.1.64, distribuído sob GPL-2.0-or-later.
-Fonte https://github.com/WordPress/wordpress-playground
-Pacotes https://www.npmjs.com/package/@php-wasm/universal e https://www.npmjs.com/package/@php-wasm/web-8-3
+```php
+$pdo = studio_db();
+$statement = $pdo->query('SELECT name FROM sqlite_master WHERE type = \'table\'');
+$tables = $statement->fetchAll(PDO::FETCH_ASSOC);
+```
 
-Twig e componentes Symfony são distribuídos sob MIT. As licenças estão em vendor/licenses. Fonte do Twig https://github.com/twigphp/Twig
+Alterações no banco são copiadas do sistema virtual para o registro do projeto em IndexedDB. Cada projeto tem uma identificação própria de ambiente. Importar ou substituir um banco gera uma nova identificação para o worker carregar os bytes corretos. A exportação do projeto inclui studio-database.sqlite.
 
-O fonte do worker está em docs/runtime-worker-source.js. Para recompilar, instale @php-wasm/universal@3.1.64 e esbuild@0.28.2 e use bundle com formato esm e plataforma browser. Marque node:*, worker_threads e ../vendor/php-wasm/php_8_3.js como externos. O arquivo de saída é assets/runtime-worker.js.
+O botão Executar consulta usa PDO::query. Executar script e Importar SQL usam PDO::exec dentro de uma transação. Uma falha desfaz a transação do script. Scripts devem usar a sintaxe do SQLite. Consultas exibem até 500 resultados.
 
-O loader e o binário PHP são os arquivos originais de @php-wasm/web-8-3@3.1.64, pasta asyncify. O pacote vendor/twig-runtime.json contém os fontes PHP do Twig e do autoloader Composer com os caminhos preservados.
+## Composer e dependências
+
+api/composer.php usa a biblioteca do Composer instalada no servidor. A rota aceita somente uma requisição POST com sessão e token CSRF válidos. O manifesto utilizado no servidor contém requisitos validados, caminhos relativos de autoload e configuração fixa. O comando update resolve dependências, cria o lock e instala arquivos com no-dev, no-plugins, no-scripts e prefer-dist.
+
+O servidor recebe composer.json. Os arquivos PHP do projeto permanecem no navegador. O resultado é um ZIP com vendor, composer.lock e o relatório da instalação. O cliente aplica os arquivos somente ao projeto que originou a solicitação e verifica se composer.json continua igual ao manifesto enviado.
+
+O serviço aceita pacotes públicos do Packagist. Plugins, scripts de instalação, repositórios privados, etapas de build de frameworks e execução de comandos do sistema exigem um ambiente apropriado fora deste instalador. Dependências que exigem extensões ausentes no WebAssembly podem instalar e ainda apresentar erro ao executar. O erro deve ser tratado conforme os requisitos do pacote.
+
+A instalação tem uma trava global por cópia do editor, oito tentativas por IP em cinco minutos, limite de 90 segundos no PHP e resultado limitado a 25 MB ou 2.500 arquivos. O diretório temporário é removido ao terminar a requisição. O caminho do PHAR pode ser definido por PHP_STUDIO_COMPOSER_PATH.
+
+## Análise e formatação
+
+O editor usa CodeMirror. ESLint e php-parser trabalham em um segundo worker. HTML e CSS usam os parsers incrementais do editor. JSON usa seu parser nativo. Twig é validado sob demanda com Twig\Environment::parse e não precisa renderizar a página para identificar erros de sintaxe.
+
+Prettier formata PHP, HTML, CSS, JavaScript e JSON. O plugin PHP oficial é carregado quando necessário. O parser de destaque dos modelos Twig usa a sintaxe de templates do modo Jinja2, enquanto a validação do botão Analisar usa o Twig real.
+
+## APIs e console
+
+Requisições do projeto aberto são encaminhadas ao worker PHP. Requisições externas usam fetch no navegador e respeitam CORS. O cliente não envia cookies da hospedagem a APIs externas. Bearer e headers informados pelo usuário só são adicionados à requisição que ele escolheu enviar.
+
+O histórico e as coleções excluem o corpo e o campo Bearer. Headers e parâmetros de URL associados a autenticação e credenciais são filtrados antes do armazenamento. As respostas e o histórico do console ficam na memória da página.
+
+## Reconstrução
+
+Os fontes dos workers são docs/runtime-worker-source.js e docs/analysis-worker-source.js. O fonte do editor avançado é docs/editor-source.js. docs/build.mjs gera os bundles de assets e copia o plugin de formatação PHP. Execute npm install e npm run build na raiz do repositório.
+
+O loader e o binário PHP permanecem os arquivos originais de @php-wasm/web-8-3@3.1.64, pasta asyncify. vendor/twig-runtime.json contém os fontes PHP do Twig e de suas dependências com os caminhos preservados. As licenças estão em vendor/licenses.
